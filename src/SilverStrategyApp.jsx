@@ -21,11 +21,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-  Card,
-  CardContent,
-  CardHeader,
-  Divider
+  TableRow
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -48,18 +44,22 @@ export default function SilverStrategyApp() {
     buyInterval: 2000,
     sellInterval: 2000,
     marginPerLot: 16000,
-    lotSize: 1
+    lotSize: 1,
+    atr: 1000,
+    averageTradingDaysPerMonth: 20,
+    trendBias: 'neutral'
   });
 
   const [result, setResult] = useState(null);
   const [chartData, setChartData] = useState([]);
+  const [volatilityData, setVolatilityData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [useSip, setUseSip] = useState(true);
   const [showExpert, setShowExpert] = useState(false);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: parseFloat(e.target.value) });
+    setForm({ ...form, [e.target.name]: e.target.type === 'number' ? parseFloat(e.target.value) : e.target.value });
   };
 
   const handleSubmit = async () => {
@@ -68,38 +68,40 @@ export default function SilverStrategyApp() {
       const analysis = await analyzeStrategy({ ...form, useSip });
       setResult(analysis);
       setChartData(analysis.payoffTable || []);
+      setVolatilityData(analysis.volatilityBufferSeries || []);
     } catch (error) {
-      alert('Error analyzing strategy.');
+      alert('Error Analyzing Strategy.');
     } finally {
       setLoading(false);
     }
   };
 
   const metricDescriptions = {
-    totalPositions: 'Total lots to be purchased based on drop intervals.',
-    totalMargin: 'Total margin required to hold all positions.',
-    averageBuyPrice: 'Average cost per unit across all positions.',
-    maxDrawdownPerLot: 'Max loss on one lot if price hits lowest point.',
-    totalMaxDrawdown: 'Worst-case loss across all lots.',
-    totalCapitalNeeded: 'Combined margin and drawdown capital required.',
-    totalProfitOnFullCycle: 'Total profit assuming all lots exit at sell intervals.',
-    estimatedAnnualReturnLow: 'Minimum projected annual return.',
-    estimatedAnnualReturnHigh: 'High-side projected annual return.',
-    estimatedROI: 'Return on investment as a percentage.',
-    breakevenPrice: 'Price at which cumulative profit = 0.',
-    worstCaseLoss: 'Maximum potential loss in adverse scenario.',
-    taxAdjustedProfit: 'Profit after accounting for tax.',
-    netROI: 'Net return percentage after taxes.',
-    capitalWithBuffer: 'Capital including additional safety reserve.',
-    winProb: 'Probability of strategy resulting in net gain.'
+    totalPositions: 'Total Lots To Be Purchased Based On Drop Intervals.',
+    totalMargin: 'Total Margin Required To Hold All Positions.',
+    averageBuyPrice: 'Average Cost Per Unit Across All Positions.',
+    maxDrawdownPerLot: 'Max Loss On One Lot If Price Hits Lowest Point.',
+    totalMaxDrawdown: 'Worst-Case Loss Across All Lots.',
+    totalCapitalNeeded: 'Combined Margin And Drawdown Capital Required.',
+    capitalWithBuffer: 'Capital Including Additional Safety Reserve.',
+    volatilityBuffer: 'Extra Capital To Protect Against Volatility (ATR-Based).',
+    totalProfitOnFullCycle: 'Total Profit Assuming All Lots Exit At Sell Intervals.',
+    estimatedAnnualReturnLow: 'Minimum Projected Annual Return.',
+    estimatedAnnualReturnHigh: 'High-Side Projected Annual Return.',
+    estimatedROI: 'Return On Investment As A Percentage.',
+    breakevenPrice: 'Price At Which Cumulative Profit = 0.',
+    worstCaseLoss: 'Maximum Potential Loss In Adverse Scenario.',
+    taxAdjustedProfit: 'Profit After Accounting For Tax.',
+    netROI: 'Net Return Percentage After Taxes.',
+    winProb: 'Probability Of Strategy Resulting In Net Gain.'
   };
 
   return (
-    <Box sx={{ background: darkMode ? '#0e0e11' : '#e3f2fd', minHeight: '100vh', py: 6 }}>
+    <Box sx={{ background: darkMode ? '#121212' : '#f4f6f8', minHeight: '100vh', py: 6 }}>
       <Container maxWidth="lg">
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h4" fontWeight="bold" color="primary">💎 {commodity} Strategy Analyzer</Typography>
-          {/* <FormControlLabel control={<Switch checked={darkMode} onChange={() => setDarkMode(!darkMode)} />} label="Dark Mode" /> */}
+          <Typography variant="h4">💎 {commodity} Strategy Analyzer</Typography>
+          <FormControlLabel control={<Switch checked={darkMode} onChange={() => setDarkMode(!darkMode)} />} label="Dark Mode" />
         </Box>
 
         <FormControl fullWidth sx={{ mb: 2 }}>
@@ -113,9 +115,7 @@ export default function SilverStrategyApp() {
 
         <FormControlLabel control={<Switch checked={useSip} onChange={() => setUseSip(!useSip)} />} label="Include SIP Capital Injection" />
 
-        <Button onClick={() => setShowExpert(!showExpert)} endIcon={showExpert ? <ExpandLessIcon /> : <ExpandMoreIcon />} sx={{ mt: 1 }}>
-          {showExpert ? 'Hide Advanced' : 'Show Advanced'}
-        </Button>
+        <Button onClick={() => setShowExpert(!showExpert)} endIcon={showExpert ? <ExpandLessIcon /> : <ExpandMoreIcon />}>{showExpert ? 'Hide Advanced' : 'Show Advanced'}</Button>
 
         <Collapse in={showExpert}>
           <Grid container spacing={2} mt={1}>
@@ -123,9 +123,9 @@ export default function SilverStrategyApp() {
               <Grid item xs={12} sm={6} key={key}>
                 <TextField
                   fullWidth
-                  label={key.replace(/([A-Z])/g, ' $1')}
+                  label={key.replace(/([A-Z])/g, ' $1').replace(/^\w/, c => c.toUpperCase())}
                   name={key}
-                  type="number"
+                  type={typeof value === 'number' ? 'number' : 'text'}
                   value={value}
                   onChange={handleChange}
                   variant="outlined"
@@ -140,30 +140,31 @@ export default function SilverStrategyApp() {
         </Button>
 
         {result && (
-          <Box mt={6}>
-            <Typography variant="h5" gutterBottom>📊 Detailed Strategy Insights</Typography>
+          <Box mt={5}>
+            <Typography variant="h5" gutterBottom>📊 Strategy Insights</Typography>
             <Grid container spacing={3}>
-              {Object.entries(result).filter(([key]) => typeof result[key] !== 'object').map(([key, value]) => (
+              {Object.entries(result).filter(([key, val]) => typeof val !== 'object').map(([key, value]) => (
                 <Grid item xs={12} sm={6} md={4} key={key}>
-                  <Card variant="outlined" sx={{ backgroundColor: darkMode ? '#1e1e2f' : '#ffffff', borderRadius: 3 }}>
-                    <CardHeader
-                      title={key.replace(/([A-Z])/g, ' $1')}
-                      titleTypographyProps={{ variant: 'subtitle2', color: 'text.secondary' }}
-                    />
-                    <Divider />
-                    <CardContent>
-                      <Typography variant="h6" fontWeight="bold">{value}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {metricDescriptions[key]}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                  <Paper sx={{ p: 2 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>{key.replace(/([A-Z])/g, ' $1').replace(/^\w/, c => c.toUpperCase())}</Typography>
+                    <Typography variant="h6">{value}</Typography>
+                    <Typography variant="caption" color="text.secondary">{metricDescriptions[key]}</Typography>
+                  </Paper>
                 </Grid>
               ))}
             </Grid>
 
+            <Box mt={5}>
+              <Typography variant="h6">📅 Monthly Strategy Forecast</Typography>
+              <Paper sx={{ p: 2, mt: 2 }}>
+                {Object.entries(result.monthlyStats).map(([key, value]) => (
+                  <Typography key={key}><strong>{key.replace(/([A-Z])/g, ' $1').replace(/^\w/, c => c.toUpperCase())}:</strong> {value}</Typography>
+                ))}
+              </Paper>
+            </Box>
+
             {chartData.length > 0 && (
-              <Box mt={6}>
+              <Box mt={5}>
                 <Typography variant="h6">📈 Payoff Chart</Typography>
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={chartData}>
@@ -171,7 +172,22 @@ export default function SilverStrategyApp() {
                     <XAxis dataKey="entryPrice" />
                     <YAxis />
                     <RechartsTooltip />
-                    <Area type="monotone" dataKey="returnIfSoldAtTarget" stroke="#1976d2" fill="#bbdefb" />
+                    <Area type="monotone" dataKey="returnIfSoldAtTarget" stroke="#8884d8" fill="#8884d8" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+
+            {volatilityData.length > 0 && (
+              <Box mt={5}>
+                <Typography variant="h6">📉 Volatility Buffer Chart</Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={volatilityData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="position" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Area type="monotone" dataKey="buffer" stroke="#82ca9d" fill="#82ca9d" />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>
@@ -180,14 +196,14 @@ export default function SilverStrategyApp() {
             {chartData.length > 0 && (
               <Box mt={5}>
                 <Typography variant="h6">📋 Payoff Table</Typography>
-                <TableContainer component={Paper} elevation={2}>
+                <TableContainer component={Paper}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
                         <TableCell>Entry Price</TableCell>
                         <TableCell>Cost</TableCell>
                         <TableCell>Drawdown</TableCell>
-                        <TableCell>Return at Target</TableCell>
+                        <TableCell>Return At Target</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>

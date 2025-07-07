@@ -6,12 +6,10 @@ export function analyzeStrategy({
   sellInterval,
   marginPerLot,
   lotSize = 1,
-  monthlySipAmount,
-  targetSellPrice,
-  expectedReboundCyclesPerYear,
-  reserveCapital,
-  historicalWinRateGuess,
-  taxRate
+  atr = 1000,
+  averageTradingDaysPerMonth = 20,
+  trendBias = 'neutral',
+  useSip = true
 }) {
   const levels = Math.floor((currentPrice - minPrice) / buyInterval);
   const totalPositions = levels + 1;
@@ -21,41 +19,56 @@ export function analyzeStrategy({
   const maxDrawdownPerLot = averageBuyPrice - minPrice;
   const totalMaxDrawdown = maxDrawdownPerLot * totalPositions * lotSize;
 
+  const volatilityBuffer = atr * totalPositions;
   const totalCapitalNeeded = totalMargin + totalMaxDrawdown;
+  const capitalWithBuffer = totalCapitalNeeded + volatilityBuffer;
 
   const profitPerLot = sellInterval;
   const totalProfitOnFullCycle = (totalPositions * (totalPositions - 1)) / 2 * profitPerLot * lotSize;
-
-  const estimatedAnnualReturnLow = totalProfitOnFullCycle * expectedReboundCyclesPerYear * 0.5;
-  const estimatedAnnualReturnHigh = totalProfitOnFullCycle * expectedReboundCyclesPerYear;
+  const estimatedAnnualReturnLow = totalProfitOnFullCycle;
+  const estimatedAnnualReturnHigh = totalProfitOnFullCycle * 3;
 
   const estimatedROI = {
     low: ((estimatedAnnualReturnLow / totalCapitalNeeded) * 100).toFixed(2) + '%',
     high: ((estimatedAnnualReturnHigh / totalCapitalNeeded) * 100).toFixed(2) + '%'
   };
 
-  const breakevenPrice = averageBuyPrice + (totalProfitOnFullCycle / (totalPositions * lotSize));
+  const breakevenPrice = currentPrice;
   const worstCaseLoss = totalMaxDrawdown;
-
-  const payoffTable = Array.from({ length: totalPositions }, (_, i) => {
-    const price = currentPrice - i * buyInterval;
-    const cost = marginPerLot;
-    const drawdown = averageBuyPrice - price;
-    const returnIfSoldAtTarget = (targetSellPrice - price) * lotSize;
-    return {
-      level: i + 1,
-      entryPrice: price,
-      cost,
-      drawdown,
-      returnIfSoldAtTarget
-    };
-  });
-
-  const taxAdjustedProfit = totalProfitOnFullCycle * (1 - taxRate / 100);
+  const taxAdjustedProfit = totalProfitOnFullCycle * 0.85;
   const netROI = ((taxAdjustedProfit / totalCapitalNeeded) * 100).toFixed(2) + '%';
+  const winProb = 0.7;
 
-  const capitalWithBuffer = totalCapitalNeeded + reserveCapital;
-  const winProb = (historicalWinRateGuess / 100).toFixed(2);
+  const payoffTable = [];
+  const volatilityBufferSeries = [];
+
+  for (let i = 0; i <= levels; i++) {
+    const entryPrice = currentPrice - i * buyInterval;
+    payoffTable.push({
+      entryPrice,
+      cost: marginPerLot,
+      drawdown: entryPrice - minPrice,
+      returnIfSoldAtTarget: (sellInterval * i) * lotSize
+    });
+
+    volatilityBufferSeries.push({
+      position: i + 1,
+      buffer: atr * (i + 1)
+    });
+  }
+
+  const atrMovesPerMonth = (averageTradingDaysPerMonth * atr) / buyInterval;
+  let trendMultiplier = 1;
+  if (trendBias === 'bullish') trendMultiplier = 1.3;
+  if (trendBias === 'bearish') trendMultiplier = 0.7;
+
+  const positionsEnteredMonthly = Math.min(
+    Math.floor(atrMovesPerMonth * trendMultiplier),
+    totalPositions
+  );
+  const profitBookedMonthly = Math.floor(positionsEnteredMonthly / 2);
+  const runningPositionsMonthly = positionsEnteredMonthly - profitBookedMonthly;
+  const monthlyProfit = profitBookedMonthly * profitPerLot * lotSize;
 
   return {
     totalPositions,
@@ -64,16 +77,26 @@ export function analyzeStrategy({
     maxDrawdownPerLot,
     totalMaxDrawdown,
     totalCapitalNeeded,
+    capitalWithBuffer,
+    volatilityBuffer,
     totalProfitOnFullCycle,
     estimatedAnnualReturnLow,
     estimatedAnnualReturnHigh,
     estimatedROI,
     breakevenPrice,
     worstCaseLoss,
-    payoffTable,
     taxAdjustedProfit,
     netROI,
-    capitalWithBuffer,
-    winProb
+    winProb,
+    payoffTable,
+    volatilityBufferSeries,
+    monthlyStats: {
+      positionsEnteredMonthly,
+      profitBookedMonthly,
+      runningPositionsMonthly,
+      monthlyProfit,
+      averageTradingDaysPerMonth,
+      trendBias
+    }
   };
 }
