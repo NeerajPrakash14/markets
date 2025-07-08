@@ -17,6 +17,7 @@ FROM nginx:stable-alpine
 
 # Copy built assets from previous stage
 COPY --from=builder /app/build /usr/share/nginx/html
+RUN chmod -R 755 /usr/share/nginx/html
 
 # Replace default nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
